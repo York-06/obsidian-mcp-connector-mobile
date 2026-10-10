@@ -32,6 +32,7 @@ import {
   teardown as semanticSearchTeardown,
   type SemanticSearchState,
 } from "./features/semantic-search";
+import { SemanticSearchModal } from "./features/semantic-search/components/SearchModal";
 import { wireSemanticSearch } from "./features/semantic-search/services/productionWiring";
 import { loadSmartSearchAPI } from "./shared";
 import { createGuardedApp, isGuardedApp } from "./shared/guardedApp";
@@ -217,6 +218,19 @@ export default class McpToolsPlugin extends Plugin {
       });
     }
 
+    this.addCommand({
+      id: "semantic-search",
+      name: "Semantic search",
+      callback: () =>
+        new SemanticSearchModal(
+          this.app,
+          () => this.semanticSearchState,
+        ).open(),
+    });
+    this.addRibbonIcon("search", "Semantic search", () =>
+      new SemanticSearchModal(this.app, () => this.semanticSearchState).open(),
+    );
+
     // 0.4.0: the in-process server has no binary to install.
     // 0.17.0: the 0.3.x migration wizard was removed; users coming
     // from <=0.3.x migrate through any 0.15.x release first.
@@ -293,7 +307,7 @@ export default class McpToolsPlugin extends Plugin {
     // this vault's clients to a port it no longer holds.
     await this.routeQueue.idle();
     if (this.mcpTransportState) {
-      await mcpTransportTeardown(this.mcpTransportState);
+      await this.desk?.mcpTransportTeardown(this.mcpTransportState);
       this.mcpTransportState = undefined;
     }
     if (this.semanticSearchState) {
