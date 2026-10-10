@@ -16,7 +16,23 @@
  * 2026-08-19 before this was written: `node:async_hooks` resolves, and a
  * store survives both a `setTimeout` and a promise continuation.
  */
-import { AsyncLocalStorage } from "node:async_hooks";
+
+// Obsidian mobile has no `node:async_hooks`. Mobile serves no MCP calls, so
+// the fallback store never holds a per-call policy and `current()` reads
+// the vault-wide one.
+type PolicyStore = {
+  run<R>(policy: PathPolicy, fn: () => R): R;
+  getStore(): PathPolicy | undefined;
+};
+declare const require: (id: string) => any; // eslint-disable-line @typescript-eslint/no-explicit-any
+function newStore(): PolicyStore {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    return new (require("node:async_hooks").AsyncLocalStorage)() as PolicyStore;
+  } catch {
+    return { run: (_policy, fn) => fn(), getStore: () => undefined };
+  }
+}
 import {
   DENY_ALL_POLICY,
   compilePolicy,
@@ -40,7 +56,7 @@ const FIELD = "excludedFolders";
  * per-token support lands.
  */
 export class PathPolicyProvider {
-  private readonly storage = new AsyncLocalStorage<PathPolicy>();
+  private readonly storage = newStore();
   private readonly store: SettingsStore;
 
   /**

@@ -3,8 +3,7 @@
   import { FeatureSettings as SemanticSearchSettings } from "src/features/semantic-search";
   import { FeatureSettings as AdaptiveToolLoadingSettings } from "src/features/adaptive-tool-loading";
   import { FeatureSettings as McpToolsSettings } from "src/features/mcp-tools";
-  import { AccessControlSection } from "src/features/mcp-transport";
-  import { ClaudeDesktopIntegrationSection } from "src/features/mcp-client-config";
+  import { Platform } from "obsidian";
   import type McpServerPlugin from "src/main";
 
   // 0.4.0 no longer ships an external `mcp-server` binary — the MCP
@@ -27,6 +26,10 @@
 
   export let plugin: McpServerPlugin;
 
+  // The server and client-config sections need Node, so they load only
+  // on desktop; mobile keeps just the semantic-search settings.
+  const desktop = Platform.isDesktop ? import("src/desktop") : undefined;
+
   // The token list and the tool-loading panel are two views of one
   // selection: Access Control owns the credentials, Tool Loading owns
   // the policy, and this tab owns which token both are talking about.
@@ -40,13 +43,18 @@
 </script>
 
 <div class="settings-container">
-  <AccessControlSection
-    {plugin}
-    bind:selectedTokenId
-    {policyRevision}
-    on:policychange={() => (accessPolicyRevision += 1)}
-  />
-  <ClaudeDesktopIntegrationSection {plugin} />
+  {#if desktop}
+    {#await desktop then d}
+      <svelte:component
+        this={d.AccessControlSection}
+        {plugin}
+        bind:selectedTokenId
+        {policyRevision}
+        on:policychange={() => (accessPolicyRevision += 1)}
+      />
+      <svelte:component this={d.ClaudeDesktopIntegrationSection} {plugin} />
+    {/await}
+  {/if}
   <CommandPermissionsSettings {plugin} />
   <SemanticSearchSettings {plugin} />
   <AdaptiveToolLoadingSettings

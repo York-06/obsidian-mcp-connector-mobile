@@ -65,6 +65,16 @@ const stubEmptyModulesPlugin: BunPlugin = {
       contents: "module.exports = require('onnxruntime-web/all');",
       loader: "js",
     }));
+    // The web build of transformers.js. Under `target: "node"` Bun also
+    // matches the package's `node` export condition, and that build does
+    // `require("fs"|"path"|"url"|"stream")` at load, which kills the plugin
+    // on Obsidian mobile where those builtins do not exist.
+    build.onResolve({ filter: /^@huggingface\/transformers$/ }, () => ({
+      path: join(
+        import.meta.dir,
+        "../../node_modules/@huggingface/transformers/dist/transformers.web.js",
+      ),
+    }));
     // turndown's browser build. The package maps its node build to a
     // browser one through package.json's `browser` field MAP
     // (`./lib/turndown.cjs.js` → `./lib/turndown.browser.cjs.js`); Bun

@@ -1,32 +1,56 @@
 import { type } from "arktype";
-import { existsSync as _existsSync, mkdirSync as _mkdirSync } from "fs";
-import { appendFile as _appendFile } from "fs/promises";
-import { homedir as _homedir, platform as _platform } from "os";
-import { dirname as _dirname, resolve as _resolve } from "path";
 
 // Node builtins behind locally-declared signatures: the
 // community-plugin scanner type-checks without @types/node, so the
 // bare imports resolve as `any` there and every call trips the
 // no-unsafe-* rules. The assertions are exact subsets of the real
 // @types/node signatures this module uses.
-const existsSync = _existsSync as (path: string) => boolean;
-const mkdirSync = _mkdirSync as (
-  path: string,
-  options?: { recursive?: boolean },
-) => void;
-const appendFile = _appendFile as (path: string, data: string) => Promise<void>;
-const homedir = _homedir as () => string;
-const platform = _platform as () => string;
-const dirname = _dirname as (path: string) => string;
-const resolve = _resolve as (...paths: string[]) => string;
+type NodeLog = {
+  existsSync: (path: string) => boolean;
+  mkdirSync: (path: string, options?: { recursive?: boolean }) => void;
+  appendFile: (path: string, data: string) => Promise<void>;
+  homedir: () => string;
+  platform: () => string;
+  dirname: (path: string) => string;
+  resolve: (...paths: string[]) => string;
+};
+
+// Obsidian mobile has no Node builtins, and a throwing `require` at
+// module load would stop the whole plugin from loading. Without them the
+// logger falls back to the console.
+declare const require: (id: string) => any; // eslint-disable-line @typescript-eslint/no-explicit-any
+const node: NodeLog | null = (() => {
+  try {
+    /* eslint-disable */
+    const fs = require("fs");
+    const fsp = require("fs/promises");
+    const os = require("os");
+    const path = require("path");
+    return {
+      existsSync: fs.existsSync,
+      mkdirSync: fs.mkdirSync,
+      appendFile: fsp.appendFile,
+      homedir: os.homedir,
+      platform: os.platform,
+      dirname: path.dirname,
+      resolve: path.resolve,
+    };
+    /* eslint-enable */
+  } catch {
+    return null;
+  }
+})();
 
 /**
  * Determines the appropriate log directory path based on the current operating system.
  * @param appName - The name of the application to use in the log directory path.
- * @returns The full path to the log directory for the current operating system.
+ * @returns The full path to the log directory for the current operating system,
+ *   or "" where there is no filesystem to log to (mobile).
  * @throws {Error} If the current operating system is not supported.
  */
 export function getLogFilePath(appName: string, fileName: string) {
+  if (!node) return "";
+  const { platform, resolve, homedir } = node;
   switch (platform()) {
     case "darwin": // macOS
       return resolve(homedir(), "Library", "Logs", appName, fileName);
@@ -43,8 +67,9 @@ export function getLogFilePath(appName: string, fileName: string) {
 }
 
 const ensureDirSync = (dirPath: string) => {
-  if (!existsSync(dirPath)) {
-    mkdirSync(dirPath, { recursive: true });
+  if (!node) return;
+  if (!node.existsSync(dirPath)) {
+    node.mkdirSync(dirPath, { recursive: true });
   }
 };
 
@@ -100,13 +125,20 @@ export function createLogger(inputConfig: InputLoggerConfig) {
   let ensuredDir: string | null = null;
   const log = (level: LogLevel, message: unknown, meta?: typeof logMeta) => {
     if (!config.levels.includes(level)) return;
-    const dir = dirname(config.filename);
+    if (!node) {
+      const out = formatMessage(level, message, { ...logMeta, ...(meta ?? {}) });
+      if (level === "ERROR" || level === "FATAL") console.error(out);
+      else if (level === "WARN") console.warn(out);
+      else console.debug(out);
+      return;
+    }
+    const dir = node.dirname(config.filename);
     if (ensuredDir !== dir) {
       ensureDirSync(dir);
       ensuredDir = dir;
     }
     queue.push(
-      appendFile(
+      node.appendFile(
         config.filename,
         formatMessage(level, message, { ...logMeta, ...(meta ?? {}) }),
       ),

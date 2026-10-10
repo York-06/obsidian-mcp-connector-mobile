@@ -1,11 +1,9 @@
-import { Notice, Plugin } from "obsidian";
+import { Notice, Platform, Plugin } from "obsidian";
 import { type SmartConnections } from "shared";
 import { checkCommandPermission as runCommandPermissionCheck } from "./features/command-permissions/services/checkCommandPermission";
-import {
-  createBrokerHost,
-  startDiscovery,
-  type BrokerHost,
-  type DiscoveryRuntime,
+import type {
+  BrokerHost,
+  DiscoveryRuntime,
 } from "./features/mcp-client-config/services/discoveryBroker";
 import {
   createRouteQueue,
@@ -14,18 +12,16 @@ import {
   RouteQueueClosed,
 } from "./features/mcp-client-config/services/routeLifecycle";
 import { BROKER_PORT } from "./features/mcp-transport/constants";
-import type { SetupResult } from "./features/mcp-transport/services/setup";
+import type {
+  McpTransportState,
+  SetupResult,
+} from "./features/mcp-transport/services/setup";
 import { SettingsStore } from "./shared/settingsStore";
 import {
   disableSettingsReadCache,
   enableSettingsReadCache,
 } from "./shared/settingsReadCache";
 import { setup as setupCore } from "./features/core";
-import {
-  setup as mcpTransportSetup,
-  teardown as mcpTransportTeardown,
-  type McpTransportState,
-} from "./features/mcp-transport";
 import {
   setup as promptsSetup,
   teardown as promptsTeardown,
@@ -43,6 +39,9 @@ import { pathPolicyFor } from "./shared/policyProvider";
 import { logger } from "./shared/logger";
 
 export default class McpToolsPlugin extends Plugin {
+  /** Node-backed server half; stays unloaded on mobile. */
+  private desk?: typeof import("./desktop");
+
   mcpTransportState?: McpTransportState;
 
   /**
@@ -105,9 +104,16 @@ export default class McpToolsPlugin extends Plugin {
    * restartTransport. Rejects with RouteQueueClosed after unload.
    */
   restartTransport(): Promise<SetupResult> {
+    const desk = this.desk;
+    if (!desk) {
+      return Promise.resolve({
+        success: false,
+        error: "The MCP server needs the desktop app",
+      });
+    }
     return restartTransport(this, {
-      setup: (stale) => mcpTransportSetup(this, stale),
-      teardown: mcpTransportTeardown,
+      setup: (stale) => desk.mcpTransportSetup(this, stale),
+      teardown: desk.mcpTransportTeardown,
       startRoute: (port) => this.startRoute(port),
     });
   }
@@ -125,8 +131,8 @@ export default class McpToolsPlugin extends Plugin {
 
   private startRoute(transportPort: number): Promise<DiscoveryRuntime> {
     const host = this.brokerHost;
-    if (!host) return Promise.reject(new RouteQueueClosed());
-    return startDiscovery(this, { host, transportPort });
+    if (!host || !this.desk) return Promise.reject(new RouteQueueClosed());
+    return this.desk.startDiscovery(this, { host, transportPort });
   }
 
   async onload() {
@@ -134,64 +140,71 @@ export default class McpToolsPlugin extends Plugin {
     // policy, folder-exclusion policy). Coalesce them before anything
     // else starts reading; writes still go to disk (settingsReadCache.ts).
     enableSettingsReadCache(this);
-    // Before the first await, so onunload always has it to close
-    this.brokerHost = createBrokerHost({ pluginId: this.manifest.id });
+    if (Platform.isDesktop) {
+      this.desk = await import("./desktop");
+      // Before the next await, so onunload always has it to close
+      this.brokerHost = this.desk.createBrokerHost({
+        pluginId: this.manifest.id,
+      });
+    }
 
     // Initialize features in order
     await setupCore(this);
 
-    // 0.4.0 HTTP transport — in-process MCP server, and its broker route.
-    let mcpResult: SetupResult;
-    try {
-      mcpResult = await this.restartTransport();
-    } catch (error) {
-      // onunload ran first, and the queue tore down whatever had started
-      if (error instanceof RouteQueueClosed) return;
-      throw error;
-    }
-    if (mcpResult.success) {
-      if (mcpResult.state.server.port === BROKER_PORT) {
-        // A fixed port saved before the broker took this port. It keeps
-        // working directly, but no vault can host the broker meanwhile.
-        new Notice(
-          `MCP Connector: This vault's fixed port ${BROKER_PORT} is reserved for the shared broker, so client configs that use the broker cannot connect to any open vault. Change the fixed port in Access Control`,
-        );
+    if (this.desk) {
+      // 0.4.0 HTTP transport — in-process MCP server, and its broker route.
+      let mcpResult: SetupResult;
+      try {
+        mcpResult = await this.restartTransport();
+      } catch (error) {
+        // onunload ran first, and the queue tore down whatever had started
+        if (error instanceof RouteQueueClosed) return;
+        throw error;
       }
-      // ADR-0020 D1: prompts are a separate registry that never reaches
-      // toolRegistry.dispatch, so this is the second and last place the
-      // guarded App has to be installed. `expandEmbeds` transcludes
-      // arbitrary `![[...]]` targets vault-wide and would otherwise read
-      // straight through an exclusion.
-      const promptsApp = createGuardedApp(this.app, () =>
-        pathPolicyFor(this).current(),
-      );
-      if (!isGuardedApp(promptsApp)) {
-        throw new Error(
-          "onload: refusing to wire prompts against an unguarded App (ADR-0020 D1).",
+      if (mcpResult.success) {
+        if (mcpResult.state.server.port === BROKER_PORT) {
+          // A fixed port saved before the broker took this port. It keeps
+          // working directly, but no vault can host the broker meanwhile.
+          new Notice(
+            `MCP Connector: This vault's fixed port ${BROKER_PORT} is reserved for the shared broker, so client configs that use the broker cannot connect to any open vault. Change the fixed port in Access Control`,
+          );
+        }
+        // ADR-0020 D1: prompts are a separate registry that never reaches
+        // toolRegistry.dispatch, so this is the second and last place the
+        // guarded App has to be installed. `expandEmbeds` transcludes
+        // arbitrary `![[...]]` targets vault-wide and would otherwise read
+        // straight through an exclusion.
+        const promptsApp = createGuardedApp(this.app, () =>
+          pathPolicyFor(this).current(),
         );
-      }
-      const promptsResult = await promptsSetup(
-        mcpResult.state.mcp.promptRegistry,
-        promptsApp,
-        {
-          // ADR-0017: the prompts feature decides WHEN the list changed, the
-          // transport owns HOW it is published. Wiring it here rather than
-          // inside the transport keeps the vault-watching in the feature
-          // that already watches the vault.
-          notifyPromptsChanged: () =>
-            mcpResult.state.mcp.notifyPromptsChanged(),
-        },
-      );
-      if (promptsResult.success) {
-        this.promptsState = promptsResult.state;
+        if (!isGuardedApp(promptsApp)) {
+          throw new Error(
+            "onload: refusing to wire prompts against an unguarded App (ADR-0020 D1).",
+          );
+        }
+        const promptsResult = await promptsSetup(
+          mcpResult.state.mcp.promptRegistry,
+          promptsApp,
+          {
+            // ADR-0017: the prompts feature decides WHEN the list changed, the
+            // transport owns HOW it is published. Wiring it here rather than
+            // inside the transport keeps the vault-watching in the feature
+            // that already watches the vault.
+            notifyPromptsChanged: () =>
+              mcpResult.state.mcp.notifyPromptsChanged(),
+          },
+        );
+        if (promptsResult.success) {
+          this.promptsState = promptsResult.state;
+        } else {
+          logger.error("Prompts feature setup failed", {
+            error: promptsResult.error,
+          });
+        }
       } else {
-        logger.error("Prompts feature setup failed", {
-          error: promptsResult.error,
-        });
+        new Notice(`MCP Connector: ${mcpResult.error}`);
+        logger.error("MCP transport setup failed", { error: mcpResult.error });
       }
-    } else {
-      new Notice(`MCP Connector: ${mcpResult.error}`);
-      logger.error("MCP transport setup failed", { error: mcpResult.error });
     }
 
     // 0.4.0 semantic search — Phase 3 production wiring, extracted to
