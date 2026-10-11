@@ -33,11 +33,6 @@
       size: "~100 MB",
       seconds: "3–5 min",
     },
-    "qwen3-embedding-0.6b": {
-      label: "Qwen3-Embedding 0.6B",
-      size: "~1.2 GB",
-      seconds: "20–60 min",
-    },
   };
 
   onMount(() => {
@@ -69,11 +64,6 @@
       storeSize =
         registry.storeFor("multilingual-e5-base", 768).size() ||
         probed["multilingual-e5-base"] ||
-        0;
-    } else if (provider === "qwen3-embedding-0.6b" && registry) {
-      storeSize =
-        registry.storeFor("qwen3-embedding-0.6b", 1024).size() ||
-        probed["qwen3-embedding-0.6b"] ||
         0;
     } else {
       storeSize =
@@ -137,9 +127,7 @@
         ? "embedding-gemma-300m"
         : settings.provider === "multilingual-e5-base"
           ? "multilingual-e5-base"
-          : settings.provider === "qwen3-embedding-0.6b"
-            ? "qwen3-embedding-0.6b"
-            : null;
+          : null;
 
     if (dlcProviderKey) {
       if (!state.startRebuildFor) {
@@ -276,19 +264,6 @@
       Multilingual E5 base
       <span class="hint"
         >multilingual, 768d, 512 context (~100 MB download)</span
-      >
-    </label>
-    <label>
-      <input
-        type="radio"
-        name="ss-provider"
-        value="qwen3-embedding-0.6b"
-        checked={settings.provider === "qwen3-embedding-0.6b"}
-        on:change={() => onProviderChange("qwen3-embedding-0.6b")}
-      />
-      Qwen3-Embedding 0.6B
-      <span class="hint"
-        >multilingual, 1024d, WebGPU recommended (~1.2 GB download)</span
       >
     </label>
   </fieldset>

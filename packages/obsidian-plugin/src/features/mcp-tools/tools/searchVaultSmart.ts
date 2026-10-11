@@ -259,8 +259,7 @@ export async function searchVaultSmartHandler(
   // started by startRebuildFor, not the native MiniLM indexer.
   const usingDlcProvider =
     settings?.provider === "embedding-gemma" ||
-    settings?.provider === "multilingual-e5-base" ||
-    settings?.provider === "qwen3-embedding-0.6b";
+    settings?.provider === "multilingual-e5-base";
   if (!usingSmartConnections && !usingDlcProvider) {
     state.startIndexerIfNeeded?.();
 

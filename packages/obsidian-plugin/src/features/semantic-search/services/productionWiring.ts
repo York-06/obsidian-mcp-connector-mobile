@@ -31,10 +31,6 @@ import {
 } from "./storeRegistry";
 import { createEmbeddingGemmaProvider } from "./embeddingGemmaProvider";
 import { createMultilingualE5Provider } from "./multilingualE5Provider";
-import {
-  createQwen3EmbeddingProvider,
-  QWEN3_DTYPE,
-} from "./qwen3EmbeddingProvider";
 import { detectNonAsciiRatio } from "./langDetect";
 import type { VaultAdapter } from "./store";
 import { FORMAT_VERSION, SEGMENT_COUNT } from "./store";
@@ -200,17 +196,10 @@ export async function wireSemanticSearch(
     dtype: "q8",
   });
   const e5Provider = createMultilingualE5Provider(e5Downloader.factory);
-  const qwen3Downloader = createModelDownloader({
-    innerFactory: realPipelineFactory,
-    dtype: QWEN3_DTYPE.wasm,
-    webgpuDtype: QWEN3_DTYPE.webgpu,
-  });
-  const qwen3Provider = createQwen3EmbeddingProvider(qwen3Downloader.factory);
 
   const embeddingProviders = {
     "embedding-gemma-300m": gemmaProvider,
     "multilingual-e5-base": e5Provider,
-    "qwen3-embedding-0.6b": qwen3Provider,
   };
 
   const semanticResult = await semanticSearchSetup(plugin, {
@@ -296,8 +285,7 @@ export async function wireSemanticSearch(
         if (
           ratio > 0.3 &&
           state.settings.provider !== "embedding-gemma" &&
-          state.settings.provider !== "multilingual-e5-base" &&
-          state.settings.provider !== "qwen3-embedding-0.6b"
+          state.settings.provider !== "multilingual-e5-base"
         ) {
           state.autoSuggestProvider = "embedding-gemma-300m";
         }
@@ -315,7 +303,6 @@ export async function wireSemanticSearch(
       auto: "native-minilm-l6-v2",
       "embedding-gemma": "embedding-gemma-300m",
       "multilingual-e5-base": "multilingual-e5-base",
-      "qwen3-embedding-0.6b": "qwen3-embedding-0.6b",
       // "smart-connections" has no local store — no rebuild needed.
     };
 
@@ -424,7 +411,6 @@ export async function wireSemanticSearch(
     for (const key of [
       "embedding-gemma-300m",
       "multilingual-e5-base",
-      "qwen3-embedding-0.6b",
     ] as const) {
       // Auto-subscribe only when the provider is currently active AND
       // its store is ready (probe pass found a current store with
@@ -515,7 +501,6 @@ const PROVIDER_DIMS = {
   "native-minilm-l6-v2": 384,
   "embedding-gemma-300m": 768,
   "multilingual-e5-base": 768,
-  "qwen3-embedding-0.6b": 1024,
 } as const satisfies Record<ProviderKey, number>;
 
 /**
