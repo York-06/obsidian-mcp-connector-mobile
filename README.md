@@ -7,6 +7,8 @@
 [![Stars](https://img.shields.io/github/stars/istefox/obsidian-mcp-connector)](https://github.com/istefox/obsidian-mcp-connector/stargazers)
 [![Forks](https://img.shields.io/github/forks/istefox/obsidian-mcp-connector)](https://github.com/istefox/obsidian-mcp-connector/forks)
 
+> **Mobile fork.** This fork makes the on-device semantic search run on Obsidian Mobile and adds a search modal and a Termux reader. Directed and tested by Emmanuel ([York-06](https://github.com/York-06)); built with Claude. Index catch-up fix by [lss-tools](https://github.com/lss-tools); the plugin itself is by istefox and Jack Steam. See [HANDOFF.md](HANDOFF.md).
+
 Your Obsidian vault, exposed to AI clients over the [Model Context Protocol](https://modelcontextprotocol.io). The MCP server runs **inside Obsidian**, on loopback, with no binary to download and no cloud round-trip. Claude Desktop, Claude Code, Cursor, Cline, Continue, Windsurf and VS Code all connect to the same endpoint.
 
 [What's new in 3.0.0](#whats-new-in-300) · [Quick start](#quick-start) · [Tools](#what-it-can-do) · [Rendered search results](#rendered-search-results-mcp-apps) · [Adaptive tool loading](#adaptive-tool-loading) · [Per-client tokens](#per-client-tokens) · [Prompts](#prompts) · [Protocol](#protocol-status) · [Clients](#connecting-a-client) · [Troubleshooting](#troubleshooting) · [Security](#security) · [For developers](#for-developers)
