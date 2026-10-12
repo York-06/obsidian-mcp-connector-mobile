@@ -48,7 +48,12 @@ const ORT_WASM_PATHS =
 type HfEnv = {
   backends?: {
     onnx?: {
-      wasm?: { numThreads?: number; simd?: boolean; wasmPaths?: string };
+      wasm?: {
+        numThreads?: number;
+        simd?: boolean;
+        wasmPaths?: string;
+        proxy?: boolean;
+      };
     };
   };
   useBrowserCache?: boolean;
@@ -83,6 +88,9 @@ export function configureEnv(): void {
   applyCommon(e);
   if (e.backends?.onnx?.wasm) {
     e.backends.onnx.wasm.numThreads = 1;
+    // transformers.js forces proxy=false; on the main thread the WASM
+    // compile and every inference call freeze Obsidian's UI (seen on mobile).
+    e.backends.onnx.wasm.proxy = true;
   }
 }
 
