@@ -43,6 +43,10 @@
       autoSuggestProvider = state.autoSuggestProvider ?? null;
     }
     refreshStatus();
+    // Indexing fires no event; without polling the count is frozen until
+    // the settings tab is reopened, and a slow index looks like a hang.
+    const tick = window.setInterval(refreshStatus, 1000);
+    return () => window.clearInterval(tick);
   });
 
   function refreshStatus() {
