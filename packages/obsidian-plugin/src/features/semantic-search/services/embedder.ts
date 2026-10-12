@@ -399,8 +399,10 @@ export async function realPipelineFactory(
     return pipe;
   }
 
+  // The web build of transformers.js has no "cpu" device (that's the Node
+  // build); its only non-GPU device is "wasm". Obsidian Mobile gets here.
   const pipe = await _hfPipeline("feature-extraction", model, {
-    device: "cpu",
+    device: "wasm",
     progress_callback: onProgress,
     ...(opts?.dtype !== undefined ? { dtype: opts.dtype } : {}),
   } as Parameters<typeof _hfPipeline>[2]);
